@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/gateway-api/apis/v1alpha2"
 	"sigs.k8s.io/gateway-api/apis/v1alpha3"
 	"sigs.k8s.io/gateway-api/apis/v1beta1"
+	apisxv1alpha1 "sigs.k8s.io/gateway-api/apisx/v1alpha1"
 
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -53,6 +54,7 @@ func TestMain(m *testing.M) {
 	v1alpha2.Install(k8sClient.Scheme())
 	v1beta1.Install(k8sClient.Scheme())
 	v1.Install(k8sClient.Scheme())
+	apisxv1alpha1.Install(k8sClient.Scheme())
 
 	os.Exit(m.Run())
 }
@@ -65,9 +67,14 @@ func celErrorStringMatches(got, want string) bool {
 	gotL := strings.ToLower(got)
 	wantL := strings.ToLower(want)
 
+	// Starting in k8s v1.32, some CEL error messages changed to use "more" instead of "longer"
+	alternativeWantL := strings.ReplaceAll(wantL, "longer", "more")
+
 	// Starting in k8s v1.28, CEL error messages stopped adding spec and status prefixes to path names
 	wantLAdjusted := strings.ReplaceAll(wantL, "spec.", "")
 	wantLAdjusted = strings.ReplaceAll(wantLAdjusted, "status.", "")
+	alternativeWantL = strings.ReplaceAll(alternativeWantL, "spec.", "")
+	alternativeWantL = strings.ReplaceAll(alternativeWantL, "status.", "")
 
 	// Enum validation messages changed in k8s v1.28:
 	// Before: must be one of ['Exact', 'PathPrefix', 'RegularExpression']
@@ -81,5 +88,5 @@ func celErrorStringMatches(got, want string) bool {
 		)
 		wantLAdjusted = r.Replace(wantLAdjusted)
 	}
-	return strings.Contains(gotL, wantL) || strings.Contains(gotL, wantLAdjusted)
+	return strings.Contains(gotL, wantL) || strings.Contains(gotL, wantLAdjusted) || strings.Contains(gotL, alternativeWantL)
 }

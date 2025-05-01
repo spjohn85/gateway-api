@@ -3,7 +3,8 @@ repo_url: https://github.com/kubernetes-sigs/gateway-api
 repo_name: kubernetes-sigs/gateway-api
 site_dir: site
 docs_dir: site-src
-trademark: https://www.linuxfoundation.org/legal/trademark-usage
+extra:
+  trademark: https://www.linuxfoundation.org/legal/trademark-usage
 extra_css:
   - stylesheets/extra.css
 extra_javascript:
@@ -52,8 +53,8 @@ markdown_extensions:
   - admonition
   - meta
   - pymdownx.emoji:
-      emoji_index: !!python/name:materialx.emoji.twemoji
-      emoji_generator: !!python/name:materialx.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.details
   - pymdownx.highlight
   - pymdownx.inlinehilite
@@ -70,17 +71,17 @@ nav:
   - Overview:
     - Introduction: index.md
     - Concepts:
-        API Overview: concepts/api-overview.md
-        Conformance: concepts/conformance.md
-        Roles and Personas: concepts/roles-and-personas.md
-        Security Model: concepts/security-model.md
-        Tools: concepts/tooling.md
-        Use Cases: concepts/use-cases.md
-        Versioning: concepts/versioning.md
+      - API Overview: concepts/api-overview.md
+      - Conformance: concepts/conformance.md
+      - Roles and Personas: concepts/roles-and-personas.md
+      - Security Model: concepts/security-model.md
+      - Tools: concepts/tooling.md
+      - Use Cases: concepts/use-cases.md
+      - Versioning: concepts/versioning.md
     - Service Mesh:
-        Overview: mesh/index.md
-        GAMMA Initiative: mesh/gamma.md
-        Service Facets: mesh/service-facets.md
+      - Overview: mesh/index.md
+      - GAMMA Initiative: mesh/gamma.md
+      - Service Facets: mesh/service-facets.md
     - Implementations:
         - List: implementations.md
         - Comparisons:
@@ -116,28 +117,34 @@ nav:
       - HTTPRoute: api-types/httproute.md
       - Policy:
         - BackendTLSPolicy: api-types/backendtlspolicy.md
+        - BackendTrafficPolicy: api-types/backendtrafficpolicy.md
       - ReferenceGrant: api-types/referencegrant.md
-    - API specification: reference/spec.md
+    - API specification:
+      - Standard: reference/spec.md
+      - Experimental: reference/specx.md
     - Policy Attachment: reference/policy-attachment.md
   - Enhancements:
     - Overview: geps/overview.md
     - Provisional:
-      - geps/gep-91/index.md
+      - geps/gep-1494/index.md
       - geps/gep-1651/index.md
-      - geps/gep-1867/index.md
       - geps/gep-2648/index.md
-      - geps/gep-2649/index.md
     - Implementable:
-      - geps/gep-3155/index.md
+      - geps/gep-91/index.md
+      - geps/gep-3567/index.md
     - Experimental:
       - geps/gep-995/index.md
       - geps/gep-1619/index.md
+      - geps/gep-1713/index.md
       - geps/gep-1731/index.md
       - geps/gep-1748/index.md
+      - geps/gep-1767/index.md
       - geps/gep-1897/index.md
       - geps/gep-2162/index.md
+      - geps/gep-2649/index.md
       - geps/gep-3155/index.md
-      - geps/gep-3171/index.md
+      - geps/gep-3388/index.md
+      - geps/gep-3567/index.md
     - Standard:
       - geps/gep-709/index.md
       - geps/gep-718/index.md
@@ -155,8 +162,10 @@ nav:
       - geps/gep-1709/index.md
       - geps/gep-1742/index.md
       - geps/gep-1762/index.md
+      - geps/gep-1867/index.md
       - geps/gep-1911/index.md
       - geps/gep-2257/index.md
+      - geps/gep-3171/index.md
     - Memorandum:
       - geps/gep-713/index.md
       - geps/gep-917/index.md
@@ -175,3 +184,6 @@ nav:
     - Enhancement Requests: contributing/enhancement-requests.md
     - Release Cycle: contributing/release-cycle.md
     - Contributor Ladder: contributing/contributor-ladder.md
+not_in_nav: |
+  /blog/*
+  /geps/gep-696/*

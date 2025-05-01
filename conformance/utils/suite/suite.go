@@ -75,8 +75,8 @@ type ConformanceTestSuite struct {
 	SkipProvisionalTests     bool
 	RunTest                  string
 	ManifestFS               []fs.FS
-	UsableNetworkAddresses   []v1beta1.GatewayAddress
-	UnusableNetworkAddresses []v1beta1.GatewayAddress
+	UsableNetworkAddresses   []v1beta1.GatewaySpecAddress
+	UnusableNetworkAddresses []v1beta1.GatewaySpecAddress
 
 	// mode is the operating mode of the implementation.
 	// The default value for it is "default".
@@ -128,6 +128,7 @@ type ConformanceOptions struct {
 	Clientset            clientset.Interface
 	RestConfig           *rest.Config
 	GatewayClassName     string
+	AddressType          string
 	Debug                bool
 	RoundTripper         roundtripper.RoundTripper
 	GRPCClient           grpc.Client
@@ -156,12 +157,12 @@ type ConformanceOptions struct {
 
 	// UsableNetworkAddresses is an optional pool of usable addresses for
 	// Gateways for tests which need to test manual address assignments.
-	UsableNetworkAddresses []v1beta1.GatewayAddress
+	UsableNetworkAddresses []v1beta1.GatewaySpecAddress
 
 	// UnusableNetworkAddresses is an optional pool of unusable addresses for
 	// Gateways for tests which need to test failures with manual Gateway
 	// address assignment.
-	UnusableNetworkAddresses []v1beta1.GatewayAddress
+	UnusableNetworkAddresses []v1beta1.GatewaySpecAddress
 
 	Mode                string
 	AllowCRDsMismatch   bool
@@ -249,6 +250,7 @@ func NewConformanceTestSuite(options ConformanceOptions) (*ConformanceTestSuite,
 		Applier: kubernetes.Applier{
 			NamespaceLabels:      options.NamespaceLabels,
 			NamespaceAnnotations: options.NamespaceAnnotations,
+			AddressType:          options.AddressType,
 		},
 		SupportedFeatures:           options.SupportedFeatures,
 		TimeoutConfig:               options.TimeoutConfig,
@@ -447,7 +449,7 @@ func (suite *ConformanceTestSuite) Run(t *testing.T, tests []ConformanceTest) er
 
 		// TODO(wstcliyu): need a better long term solution for test isolation
 		// https://github.com/kubernetes-sigs/gateway-api/issues/3233
-		if res != testSkipped && res != testNotSupported && sleepForTestIsolation {
+		if res != testSkipped && res != testNotSupported && sleepForTestIsolation && suite.TimeoutConfig.TestIsolation > 0 {
 			tlog.Logf(t, "Sleeping %v for test isolation", suite.TimeoutConfig.TestIsolation)
 			time.Sleep(suite.TimeoutConfig.TestIsolation)
 		}

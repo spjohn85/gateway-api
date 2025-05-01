@@ -49,6 +49,7 @@ func main() {
 		"sigs.k8s.io/gateway-api/apis/v1alpha2",
 		"sigs.k8s.io/gateway-api/apis/v1beta1",
 		"sigs.k8s.io/gateway-api/apis/v1",
+		"sigs.k8s.io/gateway-api/apisx/v1alpha1",
 	)
 	if err != nil {
 		log.Fatalf("failed to load package roots: %s", err)
@@ -111,7 +112,7 @@ func main() {
 				if channel == "standard" && strings.Contains(version.Name, "alpha") {
 					channelCrd.Spec.Versions[i].Served = false
 				}
-				version.Schema.OpenAPIV3Schema.Properties = gatewayTweaks(channel, version.Schema.OpenAPIV3Schema.Properties)
+				version.Schema.OpenAPIV3Schema.Properties = gatewayTweaksMap(channel, version.Schema.OpenAPIV3Schema.Properties)
 			}
 
 			conv, err := crd.AsVersion(*channelCrd, apiext.SchemeGroupVersion)
@@ -133,124 +134,145 @@ func main() {
 	}
 }
 
-// Custom Gateway API Tweaks for tags prefixed with `<gateway:` that get past
-// the limitations of Kubebuilder annotations.
-func gatewayTweaks(channel string, props map[string]apiext.JSONSchemaProps) map[string]apiext.JSONSchemaProps {
+func gatewayTweaksMap(channel string, props map[string]apiext.JSONSchemaProps) map[string]apiext.JSONSchemaProps {
 	for name := range props {
 		jsonProps, _ := props[name]
-
-		if strings.Contains(jsonProps.Description, "<gateway:validateIPAddress>") {
-			jsonProps.Items.Schema.OneOf = []apiext.JSONSchemaProps{{
-				Properties: map[string]apiext.JSONSchemaProps{
-					"type": {
-						Enum: []apiext.JSON{{Raw: []byte("\"IPAddress\"")}},
-					},
-					"value": {
-						AnyOf: []apiext.JSONSchemaProps{{
-							Format: "ipv4",
-						}, {
-							Format: "ipv6",
-						}},
-					},
-				},
-			}, {
-				Properties: map[string]apiext.JSONSchemaProps{
-					"type": {
-						Not: &apiext.JSONSchemaProps{
-							Enum: []apiext.JSON{{Raw: []byte("\"IPAddress\"")}},
-						},
-					},
-				},
-			}}
-		}
-
-		if channel == "standard" && strings.Contains(jsonProps.Description, "<gateway:experimental>") {
+		p := gatewayTweaks(channel, name, jsonProps)
+		if p == nil {
 			delete(props, name)
-			continue
-		}
-
-		// TODO(robscott): Figure out why crdgen switched this to "object"
-		if jsonProps.Format == "date-time" {
-			jsonProps.Type = "string"
-		}
-
-		validationPrefix := fmt.Sprintf("<gateway:%s:validation:", channel)
-		numExpressions := strings.Count(jsonProps.Description, validationPrefix)
-		numValid := 0
-		if numExpressions > 0 {
-			enumRe := regexp.MustCompile(validationPrefix + "Enum=([A-Za-z;]*)>")
-			enumMatches := enumRe.FindAllStringSubmatch(jsonProps.Description, 64)
-			for _, enumMatch := range enumMatches {
-				if len(enumMatch) != 2 {
-					log.Fatalf("Invalid %s Enum tag for %s", validationPrefix, name)
-				}
-
-				numValid++
-				jsonProps.Enum = []apiext.JSON{}
-				for _, val := range strings.Split(enumMatch[1], ";") {
-					jsonProps.Enum = append(jsonProps.Enum, apiext.JSON{Raw: []byte("\"" + val + "\"")})
-				}
-			}
-
-			celRe := regexp.MustCompile(validationPrefix + "XValidation:message=\"([^\"]*)\",rule=\"([^\"]*)\">")
-			celMatches := celRe.FindAllStringSubmatch(jsonProps.Description, 64)
-			for _, celMatch := range celMatches {
-				if len(celMatch) != 3 {
-					log.Fatalf("Invalid %s CEL tag for %s", validationPrefix, name)
-				}
-
-				numValid++
-				jsonProps.XValidations = append(jsonProps.XValidations, apiext.ValidationRule{
-					Message: celMatch[1],
-					Rule:    celMatch[2],
-				})
-			}
-		}
-		startTag := "<gateway:experimental:description>"
-		endTag := "</gateway:experimental:description>"
-		regexPattern := regexp.QuoteMeta(startTag) + `(?s:(.*?))` + regexp.QuoteMeta(endTag)
-		if channel == "standard" && strings.Contains(jsonProps.Description, "<gateway:experimental:description>") {
-			re := regexp.MustCompile(regexPattern)
-			match := re.FindStringSubmatch(jsonProps.Description)
-			if len(match) != 2 {
-				log.Fatalf("Invalid <gateway:experimental:description> tag for %s", name)
-			}
-			modifiedDescription := re.ReplaceAllString(jsonProps.Description, "")
-			jsonProps.Description = modifiedDescription
 		} else {
-			jsonProps.Description = strings.ReplaceAll(jsonProps.Description, startTag, "")
-			jsonProps.Description = strings.ReplaceAll(jsonProps.Description, endTag, "")
+			props[name] = *p
 		}
-
-		// Comments within "gateway:util:excludeFromCRD" tag is not included in the generated CRD and all trailing \n operators before
-		// and after the tags are removed and replaced with three \n operators.
-		startTag = "<gateway:util:excludeFromCRD>"
-		endTag = "</gateway:util:excludeFromCRD>"
-		regexPattern = `\n*` + regexp.QuoteMeta(startTag) + `(?s:(.*?))` + regexp.QuoteMeta(endTag) + `\n*`
-		if strings.Contains(jsonProps.Description, "<gateway:util:excludeFromCRD>") {
-			re := regexp.MustCompile(regexPattern)
-			match := re.FindStringSubmatch(jsonProps.Description)
-			if len(match) != 2 {
-				log.Fatalf("Invalid <gateway:util:excludeFromCRD> tag for %s", name)
-			}
-			modifiedDescription := re.ReplaceAllString(jsonProps.Description, "\n\n\n")
-			jsonProps.Description = modifiedDescription
-		}
-
-		if numValid < numExpressions {
-			fmt.Printf("Description: %s\n", jsonProps.Description)
-			log.Fatalf("Found %d Gateway validation expressions, but only %d were valid", numExpressions, numValid)
-		}
-
-		gatewayRe := regexp.MustCompile(`<gateway:.*>`)
-		jsonProps.Description = gatewayRe.ReplaceAllLiteralString(jsonProps.Description, "")
-
-		if len(jsonProps.Properties) > 0 {
-			jsonProps.Properties = gatewayTweaks(channel, jsonProps.Properties)
-		} else if jsonProps.Items != nil && jsonProps.Items.Schema != nil {
-			jsonProps.Items.Schema.Properties = gatewayTweaks(channel, jsonProps.Items.Schema.Properties)
-		}
-		props[name] = jsonProps
 	}
 	return props
+}
+
+// Custom Gateway API Tweaks for tags prefixed with `<gateway:` that get past
+// the limitations of Kubebuilder annotations.
+func gatewayTweaks(channel string, name string, jsonProps apiext.JSONSchemaProps) *apiext.JSONSchemaProps {
+	if strings.Contains(jsonProps.Description, "<gateway:validateIPAddress>") {
+		jsonProps.Items.Schema.OneOf = []apiext.JSONSchemaProps{{
+			Properties: map[string]apiext.JSONSchemaProps{
+				"type": {
+					Enum: []apiext.JSON{{Raw: []byte("\"IPAddress\"")}},
+				},
+				"value": {
+					AnyOf: []apiext.JSONSchemaProps{{
+						Format: "ipv4",
+					}, {
+						Format: "ipv6",
+					}},
+				},
+			},
+		}, {
+			Properties: map[string]apiext.JSONSchemaProps{
+				"type": {
+					Not: &apiext.JSONSchemaProps{
+						Enum: []apiext.JSON{{Raw: []byte("\"IPAddress\"")}},
+					},
+				},
+			},
+		}}
+	}
+
+	if channel == "standard" {
+		if strings.Contains(jsonProps.Description, "<gateway:experimental>") {
+			return nil
+		}
+	}
+
+	// TODO(robscott): Figure out why crdgen switched this to "object"
+	if jsonProps.Format == "date-time" {
+		jsonProps.Type = "string"
+	}
+
+	validationPrefix := fmt.Sprintf("<gateway:%s:validation:", channel)
+	numExpressions := strings.Count(jsonProps.Description, validationPrefix)
+	numValid := 0
+	if numExpressions > 0 {
+		enumRe := regexp.MustCompile(validationPrefix + "Enum=([A-Za-z;]*)>")
+		enumMatches := enumRe.FindAllStringSubmatch(jsonProps.Description, 64)
+		for _, enumMatch := range enumMatches {
+			if len(enumMatch) != 2 {
+				log.Fatalf("Invalid %s Enum tag for %s", validationPrefix, name)
+			}
+
+			numValid++
+			jsonProps.Enum = []apiext.JSON{}
+			for _, val := range strings.Split(enumMatch[1], ";") {
+				jsonProps.Enum = append(jsonProps.Enum, apiext.JSON{Raw: []byte("\"" + val + "\"")})
+			}
+		}
+
+		celRe := regexp.MustCompile(validationPrefix + "XValidation:message=\"([^\"]*)\",rule=\"([^\"]*)\">")
+		celMatches := celRe.FindAllStringSubmatch(jsonProps.Description, 64)
+		for _, celMatch := range celMatches {
+			if len(celMatch) != 3 {
+				log.Fatalf("Invalid %s CEL tag for %s", validationPrefix, name)
+			}
+
+			numValid++
+			jsonProps.XValidations = append(jsonProps.XValidations, apiext.ValidationRule{
+				Message: celMatch[1],
+				Rule:    celMatch[2],
+			})
+		}
+	}
+
+	if numValid < numExpressions {
+		fmt.Printf("Description: %s\n", jsonProps.Description)
+		log.Fatalf("Found %d Gateway validation expressions, but only %d were valid", numExpressions, numValid)
+	}
+
+	jsonProps.Description = formatDescription(jsonProps.Description, channel, name)
+
+	if len(jsonProps.Properties) > 0 {
+		jsonProps.Properties = gatewayTweaksMap(channel, jsonProps.Properties)
+	} else if jsonProps.Items != nil && jsonProps.Items.Schema != nil {
+		jsonProps.Items.Schema = gatewayTweaks(channel, name, *jsonProps.Items.Schema)
+	}
+
+	return &jsonProps
+}
+
+func formatDescription(description string, channel string, name string) string {
+	startTag := "<gateway:experimental:description>"
+	endTag := "</gateway:experimental:description>"
+	if channel == "standard" && strings.Contains(description, "<gateway:experimental:description>") {
+		regexPattern := `\n*` + regexp.QuoteMeta(startTag) + `(?s:(.*?))` + regexp.QuoteMeta(endTag) + `\n*`
+		re := regexp.MustCompile(regexPattern)
+		match := re.FindStringSubmatch(description)
+		if len(match) != 2 {
+			log.Fatalf("Invalid <gateway:experimental:description> tag for %s", name)
+		}
+		description = re.ReplaceAllString(description, "\n\n")
+	} else {
+		description = strings.ReplaceAll(description, startTag, "")
+		description = strings.ReplaceAll(description, endTag, "")
+	}
+
+	// Comments within "gateway:util:excludeFromCRD" tag is not included in the generated CRD and all trailing \n operators before
+	// and after the tags are removed and replaced with three \n operators.
+	startTag = "<gateway:util:excludeFromCRD>"
+	endTag = "</gateway:util:excludeFromCRD>"
+	if strings.Contains(description, "<gateway:util:excludeFromCRD>") {
+		regexPattern := `\n*` + regexp.QuoteMeta(startTag) + `(?s:(.*?))` + regexp.QuoteMeta(endTag) + `\n*`
+		re := regexp.MustCompile(regexPattern)
+		match := re.FindStringSubmatch(description)
+		if len(match) != 2 {
+			log.Fatalf("Invalid <gateway:util:excludeFromCRD> tag for %s", name)
+		}
+		description = re.ReplaceAllString(description, "\n\n\n")
+	}
+
+	gatewayRe := regexp.MustCompile(`<gateway:.*>`)
+	description = gatewayRe.ReplaceAllLiteralString(description, "")
+
+	// Remove any extra \n (more than 3 and all trailing at the end)
+	regexPattern := `\n\n\n+`
+	re := regexp.MustCompile(regexPattern)
+	description = re.ReplaceAllString(description, "\n\n\n")
+	description = strings.Trim(description, "\n")
+
+	return description
 }

@@ -1,32 +1,39 @@
 # GEP-3171: Percentage-based Request Mirroring
 
 * Issue: [#3171](https://github.com/kubernetes-sigs/gateway-api/issues/3171)
-* Status: **Experimental**
+* Status: Standard
 
-(See status definitions [here](/geps/overview/#gep-states).)
+(See [status definitions](../overview.md#gep-states).)
 
 ## TLDR
 
-Enhance the existing [Request Mirroring](https://gateway-api.sigs.k8s.io/guides/http-request-mirroring/) feature by allowing users to specify a percentage of requests they'd like mirrored.
+Enhance the existing [Request Mirroring](../../guides/http-request-mirroring.md) feature by allowing users to specify a percentage of requests they'd like mirrored.
 
 ## Goals
 
-Successfully implement the feature.
+Enable percentage-based request mirroring with Gateway and Gateway for mesh APIs.
+
+## Scope
+
+<!-- TODO(https://github.com/kubernetes-sigs/gateway-api/issues/3514) Add GRPCRoute supportedFeatures and coverage -->
+The scope of this GEP is to add support for this feature in both HTTPRoute and GRPCRoute
 
 ## Introduction
 
-[Request Mirroring](https://gateway-api.sigs.k8s.io/guides/http-request-mirroring/) is a feature that allows a user to mirror requests going to some backend A along to some other specified backend B. Right now Request Mirroring is an all or nothing feature – either 100% of request are mirrored, or 0% are. Percentage-based Request Mirroring will allow users to specify a percentage of requests they'd like mirrored as opposed to every single request.   
+[Request Mirroring](../../guides/http-request-mirroring.md) is a feature that allows a user to mirror requests going to some backend A along to some other specified backend B. Right now Request Mirroring is an all or nothing feature – either 100% of request are mirrored, or 0% are. Percentage-based Request Mirroring will allow users to specify a percentage of requests they'd like mirrored as opposed to every single request.
 
-This feature is already [supported by Envoy](https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#envoy-v3-api-msg-config-route-v3-routeaction-requestmirrorpolicy), so adding it for the Gateway API would enable better integration between the two products. There's also an existing user desire for this feature on the [HAProxy side](https://www.haproxy.com/blog/haproxy-traffic-mirroring-for-real-world-testing) and [NGINX side](https://alex.dzyoba.com/blog/nginx-mirror/). Since Request Mirroring is already supported by the Gateway API, Percentage-based Request Mirroring would a clear improvement on this pre-existing feature.
+This feature is already [supported by Envoy][config.route.v3.RouteAction.RequestMirrorPolicy], so adding it for the Gateway API would enable better integration between the two products. There's also an existing user desire for this feature on the [HAProxy side](https://www.haproxy.com/blog/haproxy-traffic-mirroring-for-real-world-testing) and [NGINX side](https://alex.dzyoba.com/blog/nginx-mirror/). Since Request Mirroring is already supported by the Gateway API, Percentage-based Request Mirroring would a clear improvement on this preexisting feature.
+
+[config.route.v3.RouteAction.RequestMirrorPolicy]: https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#envoy-v3-api-msg-config-route-v3-routeaction-requestmirrorpolicy
 
 ## Existing Support in Implementations
 
 | Implementation | Support |
 |----------------|------------|
-| Envoy | [config.route.v3.RouteAction.RequestMirrorPolicy](config.route.v3.RouteAction.RequestMirrorPolicy) |
+| Envoy | [config.route.v3.RouteAction.RequestMirrorPolicy][config.route.v3.RouteAction.RequestMirrorPolicy] |
 | HAProxy | [HAProxy SPOP](https://github.com/haproxytech/spoa-mirror) |
 | NGINX | [ngx_http_mirror_module](https://nginx.org/en/docs/http/ngx_http_mirror_module.html) |
-| gCloud | [RequestMirrorPolicy](https://cloud.google.com/python/docs/reference/compute/latest/google.cloud.compute_v1.types.RequestMirrorPolicy) |
+
 
 ## API
 
@@ -80,7 +87,7 @@ type HTTPRequestMirrorFilter struct {
         //
         // Support: Implementation-specific for any other resource
         BackendRef BackendObjectReference `json:"backendRef"`
-      
+
         // Percent represents the percentage of requests that should be
         // mirrored to BackendRef. Its minimum value is 0 (indicating 0% of
         // requests) and its maximum value is 100 (indicating 100% of requests).
@@ -111,12 +118,12 @@ type HTTPRequestMirrorFilter struct {
 }
 ```
 
-## Example
+## Examples for North/South traffic
 
 An example with Percent:
 
 
-```
+```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -140,12 +147,12 @@ spec:
           port: 8080
         percent: 42
 ```
-This would result in 42% of requests going to `foo-v1` to be mirrored to `foo-v2`.    
+
+This would result in 42% of requests going to `foo-v1` to be mirrored to `foo-v2`.
 
 An example with Fraction:
 
-
-```
+```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -171,4 +178,40 @@ spec:
           numerator: 5
           denominator: 1000
 ```
+
 This would result in 0.5% of requests going to `foo-v1` to be mirrored to `foo-v2`.
+
+## Examples for East/West traffic
+
+Similarly, here is how it would be for mesh.
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: http-filter-mirror
+  labels:
+    service: mirror-service
+spec:
+  parentRefs:
+  - group: ""
+    kind: Service
+    name: mirror-service
+  rules:
+  - backendRefs:
+    - name: foo-v1
+      port: 8080
+    filters:
+    - type: RequestMirror
+      requestMirror:
+        backendRef:
+          name: foo-v2
+          port: 8080
+        percent: 42
+```
+
+## Conformance Details
+
+A new Supported Feature with the following name SupportHTTPRouteRequestPercentageMirror is introduced along with a corresponding conformance test.
+
+<!-- TODO(https://github.com/kubernetes-sigs/gateway-api/issues/3515) Different supportedFeature for mesh> -->
